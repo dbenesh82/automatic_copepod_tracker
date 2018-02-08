@@ -264,29 +264,6 @@ def track_copepod(well, video):
     return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs','blob_size']))
 
 
-
-
-vid_file = 'vid/pl1_day5.mov'
-tot_frames, vid_width, vid_height = video_attributes(vid_file)
-drop = find_drop(vid_file)
-rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
-wells_before = find_wells(rand_imgs_before) # get average well position before
-wells_after = find_wells(rand_imgs_after) # get average well position after
-
-
-
-
-well_id = ['1A', '1B', '1C', '1D',
-           '2A', '2B', '2C', '2D',
-           '3A', '3B', '3C', '3D',
-           '4A', '4B', '4C', '4D',
-           '5A', '5B', '5C', '5D',
-           '6A', '6B', '6C', '6D']
-
-
-outx = track_copepod(15, vid_file)    
-
-
 def extract_plate_day_from_vid_file_name(vid_file):
     fname = Path(vid_file).stem
     plate, day = fname.split("_")
@@ -302,4 +279,71 @@ def extract_plate_day_from_vid_file_name(vid_file):
     
     return(plate, day)
 
-extract_plate_day_from_vid_file_name(vid_file)
+
+
+vid_file = 'vid/pl1_day5.mov'
+plate, day = extract_plate_day_from_vid_file_name(vid_file)
+tot_frames, vid_width, vid_height = video_attributes(vid_file)
+drop = find_drop(vid_file)
+rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
+wells_before = find_wells(rand_imgs_before) # get average well position before
+wells_after = find_wells(rand_imgs_after) # get average well position after
+
+
+
+
+
+well_id = ['1A', '1B', '1C', '1D',
+           '2A', '2B', '2C', '2D',
+           '3A', '3B', '3C', '3D',
+           '4A', '4B', '4C', '4D',
+           '5A', '5B', '5C', '5D',
+           '6A', '6B', '6C', '6D']
+
+
+
+
+
+outx = track_copepod(15, vid_file)
+
+# need to wrangle output data
+# calculate distance
+# calculate dot product
+
+# cut too many frames before and after drop
+before_drop = outx.iloc[drop-1-(8*60):drop-1]
+after_drop = outx.iloc[drop-1:drop-1 + 8*60]
+time_df = pd.concat([before_drop, after_drop])
+len(time_df) == 960 # number of frames corresponding to two minutes
+
+# fill in nones at beginning; assumes small first move
+for i in range(len(outx['x'])):
+    print(outx.iloc[i]['x'])
+    
+    if outx.iloc[i]['x'] is not None:
+        x,y = outx.iloc[i]['x'], outx.iloc[i]['y']
+        outx.loc[0:i-1,'x'] = x
+        outx.loc[0:i-1,'y'] = y
+        break
+outx
+
+# run on whole plate
+def track_whole_plate(video):
+    # list of well ids
+    well_ids = ['1A', '1B', '1C', '1D',
+           '2A', '2B', '2C', '2D',
+           '3A', '3B', '3C', '3D',
+           '4A', '4B', '4C', '4D',
+           '5A', '5B', '5C', '5D',
+           '6A', '6B', '6C', '6D']
+    
+    plate, day = extract_plate_day_from_vid_file_name(video)
+
+    for w in range(len(well_ids)):
+        out_df = track_copepod(w, video)
+        well_id = well_ids[w]
+        out_fname = plate + "_" + well_id + "_" + day + ".csv"
+        out_df.to_csv('track_data/' + out_fname)
+        
+        
+track_whole_plate(vid_file)
