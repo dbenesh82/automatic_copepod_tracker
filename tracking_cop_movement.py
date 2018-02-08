@@ -11,9 +11,8 @@ import random
 import cv2
 import matplotlib.pyplot as plt
 from skimage.measure import compare_ssim as ssim
+from pathlib import Path
 
-
-vid_file = 'vid/pl1_day5.mov'
 
 def video_attributes(video):
     '''
@@ -72,8 +71,8 @@ def find_drop(video):
 
 def get_random_images(video, total_frames, drop, n):
     '''
-    Get n random images before and after drop. 
-    Returns an image array which is used to find wells and their average position.
+    Get n random images before and after drop. Returns image arrays.
+    Used to get average position of wells across a random set of frames.
     '''
     # pick random images
     rands_before = random.sample(range(drop), n)
@@ -104,7 +103,8 @@ def get_random_images(video, total_frames, drop, n):
 # find the wells in the frames before and after the drop
 def find_wells(imgs):
     '''
-    Takes in a series of frames, finds the wells, returns their mean position and radius.
+    Takes in a series of frames, finds the circles (wells).
+    Returns their mean x-y position and radius.
     '''
     for img in imgs: # loop through frames
         # find wells
@@ -142,19 +142,21 @@ def find_wells(imgs):
 
 
 
-def find_copepod(frame):
+def find_copepod(binary_frame):
     '''
-    Take in binary image, returns whether the cop was moving and thus identified.
-    Helper in the track_copepod function
+    Take in binary image, returns the identified blobs.
+    Parameters set to find moving cop, i.e. when it is in foreground not background.
+    Returns whether cop was found, x-y coordinates, cop size, and number of blobs identified.
+    Helper in the track_copepod function.
     '''
     # setup blob detector parameters.
     params = cv2.SimpleBlobDetector_Params()
     # threshold from black to white
     params.minThreshold = 0;
     params.maxThreshold = 255;
-    # only blobs bigger than 7 pixels area
+    # only blobs bigger than 7 pixels area, avoids noise, finds cop
     params.filterByArea = True
-    params.minArea = 7
+    params.minArea = 8
     # create a detector with the parameters
     ver = (cv2.__version__).split('.')
     if int(ver[0]) < 3 :
@@ -163,7 +165,7 @@ def find_copepod(frame):
         detector = cv2.SimpleBlobDetector_create(params)
     
     # use detector
-    keypoints = detector.detect(frame)
+    keypoints = detector.detect(binary_frame)
     blobs = len(keypoints)
     cop_found = blobs > 0
     
@@ -178,7 +180,8 @@ def find_copepod(frame):
 
 
 def track_copepod(well, video):
-    # create before and after masks for the well
+    # create masks to isolate the well, one for before and one for after drop
+    tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
     xc, yc, rad = wells_before[well]
     d2 = (x - xc)**2 + (y - yc)**2
@@ -191,14 +194,12 @@ def track_copepod(well, video):
     cap = cv2.VideoCapture('vid/pl1_day5.mov')
     # model for background subtraction
     fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
-
-    # initialize frame and data output
+    # initialize frame and output data
     ret, old_frame = cap.read()
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    old_gray[maskx] = 0
+    old_gray[mask_before] = 0
     old_gray = fgbg.apply(old_gray)
-    old_gray = cv2.bitwise_not(old_gray)
-    
+    old_gray = cv2.bitwise_not(old_gray) # makes binary
     cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray)
     
     while(cap.isOpened()):
@@ -209,9 +210,9 @@ def track_copepod(well, video):
         if ret==True:
             # convert frame to grayscale
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if frame_n == drop: # at drop, reset background subtractor, record no data
+            if frame_n == drop: # if at drop, reset background subtractor, record no data
                 fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False)
-                frame[mask_before] = 0
+                frame[mask_after] = 0
                 next
             else:
                 # apply masks to frame depending on before or after drop
@@ -235,16 +236,16 @@ def track_copepod(well, video):
                     out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
                     # draw circle around cop
                     cv2.circle(frame,(int(xc),int(yc)),4,(0,0,255), 2)
-                    # only reassign cop coord if moving
+                    # reassign cop coord if it was found (moving)
                     xp, yp = xc, yc
                 else:
-                    # if cop not found, use results
+                    # if cop not found, use x-y coord from previous frame
                     out_row = np.array([frame_n, xp, yp, blobs, cop_qual])
                     if xp is not None:
                         cv2.circle(frame,(int(xp),int(yp)),4,(255,0,0), 2)
             
 
-                # create output array for each frame
+                # create output array, frame-by-frame
                 try:
                     out_array
                 except NameError:
@@ -264,6 +265,8 @@ def track_copepod(well, video):
 
 
 
+
+vid_file = 'vid/pl1_day5.mov'
 tot_frames, vid_width, vid_height = video_attributes(vid_file)
 drop = find_drop(vid_file)
 rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
@@ -281,105 +284,22 @@ well_id = ['1A', '1B', '1C', '1D',
            '6A', '6B', '6C', '6D']
 
 
-outx = track_copepod(6, vid_file)    
+outx = track_copepod(15, vid_file)    
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
- 
+def extract_plate_day_from_vid_file_name(vid_file):
+    fname = Path(vid_file).stem
+    plate, day = fname.split("_")
+    plate = [s for s in plate if s.isdigit()]
     
-
-
-
-
-
-
-
-# pick just one well
-x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))   
-xc, yc, rad = wells_before[1]
-d2 = (x - xc)**2 + (y - yc)**2
-maskx = d2 > rad**2
-
-cap = cv2.VideoCapture('vid/pl1_day5.mov')
-# model for background subtraction
-fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
-
-# initialize frame
-ret, old_frame = cap.read()
-old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-old_gray[maskx] = 0
-
-# look for cop; get initial values for tracking
-old_cop_found, xp, yp, old_cop_qual = find_copepod(old_gray)
-
-while(cap.isOpened()):
-    frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
-    ret, frame = cap.read()
-    print(frame_n)
-    if ret==True:
-        # once frame number goes past drop, stop
-        if frame_n >= f_drop:
-            break
-        else:
-            # convert to grayscale
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            # make area outside wells black
-            gray[maskx] = 0
-            frame[maskx] = 0
-            # remove blackground
-            gray = fgbg.apply(gray)
-            
-            # find copepod in current frame
-            cop_found, xc, yc, cop_qual = find_copepod(gray)
-                
-            if cop_found:
-                # output its position and draw a circle around it
-                out_row = np.array([frame_n, xc, yc, cop_qual])
-                cv2.circle(frame,(xc,yc),4,(0,0,255), 2)
-            # if no copepod found, use x, y coord from previous frame
-            else:
-                out_row = np.array([frame_n, xp, yp, cop_qual])
-                if xp is not None:
-                    cv2.circle(frame,(xp,yp),4,(255,0,0), 2)
-            
-            # create output array
-            try:
-                out_array
-            except NameError:
-                out_array = [out_row]
-            else:
-                out_array = np.append(out_array, [out_row], axis = 0)
-                
-            # assign current frame values to previous frame values
-            old_cop_found, xp, yp, old_cop_qual = cop_found, xc, yc, cop_qual
- 
-
-            cv2.imshow('frame', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+    if len(plate) > 1:
+        plate = ''.join(plate)
     else:
-        break
-cap.release()
-cv2.destroyAllWindows()
+        plate = '0' + plate[0]
 
+    day = [s for s in day if s.isdigit()]
+    day = ''.join(day)
+    
+    return(plate, day)
 
-
-
+extract_plate_day_from_vid_file_name(vid_file)
