@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import random
 import cv2
-import matplotlib.pyplot as plt
 from skimage.measure import compare_ssim as ssim
 from pathlib import Path
 
@@ -32,7 +31,7 @@ def find_drop(video):
     '''
     Takes in video, returns the frame at which plate is dropped
     '''
-    cap = cv2.VideoCapture(vid_file) # open vid
+    cap = cv2.VideoCapture(video) # open vid
     # get first frame
     ret, frame_p = cap.read()
     frame_p = cv2.cvtColor(frame_p, cv2.COLOR_BGR2GRAY)
@@ -154,9 +153,9 @@ def find_copepod(binary_frame):
     # threshold from black to white
     params.minThreshold = 0;
     params.maxThreshold = 255;
-    # only blobs bigger than 7 pixels area, avoids noise, finds cop
+    # only blobs bigger than 9 pixels area, does not avoids all noise
     params.filterByArea = True
-    params.minArea = 8
+    params.minArea = 9
     # create a detector with the parameters
     ver = (cv2.__version__).split('.')
     if int(ver[0]) < 3 :
@@ -191,7 +190,7 @@ def track_copepod(well, video):
     mask_after = d2 > rad**2
     
     # open video
-    cap = cv2.VideoCapture('vid/pl1_day5.mov')
+    cap = cv2.VideoCapture(video)
     # model for background subtraction
     fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
     # initialize frame and output data
@@ -264,8 +263,8 @@ def track_copepod(well, video):
     return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs','blob_size']))
 
 
-def extract_plate_day_from_vid_file_name(vid_file):
-    fname = Path(vid_file).stem
+def extract_plate_day_from_vid_file_name(video):
+    fname = Path(video).stem
     plate, day = fname.split("_")
     plate = [s for s in plate if s.isdigit()]
     
@@ -280,14 +279,6 @@ def extract_plate_day_from_vid_file_name(vid_file):
     return(plate, day)
 
 
-
-vid_file = 'vid/pl1_day5.mov'
-plate, day = extract_plate_day_from_vid_file_name(vid_file)
-tot_frames, vid_width, vid_height = video_attributes(vid_file)
-drop = find_drop(vid_file)
-rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
-wells_before = find_wells(rand_imgs_before) # get average well position before
-wells_after = find_wells(rand_imgs_after) # get average well position after
 
 
 
@@ -322,10 +313,15 @@ def wrangle_cop_data(df):
     out_df['y2'] = out_df['y'].shift(-1)
     out_df['distance'] = ( ((out_df['x2'] - out_df['x'])**2 + (out_df['y2'] - out_df['y'])**2) )**0.5
     
-    # calculate dot product too
+    # calculate dot product
+    out_df['x3'] = out_df['x'].shift(-2)
+    out_df['y3'] = out_df['y'].shift(-2)
+    out_df['dot_product'] = ((out_df['x'] - out_df['x2']) * (out_df['x2'] - out_df['x3']) + 
+          (out_df['y'] - out_df['y2']) * (out_df['y2'] - out_df['y3']))
+    
     
     # remove coordinates after calculating needed info
-    out_df = out_df.drop(['x2','y2'], axis = 1)
+    out_df = out_df.drop(['x2','y2','x3','y3'], axis = 1)
     
     return(out_df)
 
@@ -350,6 +346,17 @@ def track_whole_plate(video):
         out_fname = plate + "_" + well_id + "_" + day + ".csv"
         out_df.to_csv('track_data/' + out_fname)
         
+
+
+
+
+vid_file = 'vid/plt20_day13.mov'
+tot_frames, vid_width, vid_height = video_attributes(vid_file)
+drop = find_drop(vid_file)
+rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
+wells_before = find_wells(rand_imgs_before) # get average well position before
+wells_after = find_wells(rand_imgs_after) # get average well position after
+
 
 
 track_whole_plate(vid_file)
