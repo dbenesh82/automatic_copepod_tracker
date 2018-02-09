@@ -292,40 +292,45 @@ wells_after = find_wells(rand_imgs_after) # get average well position after
 
 
 
-
-well_id = ['1A', '1B', '1C', '1D',
-           '2A', '2B', '2C', '2D',
-           '3A', '3B', '3C', '3D',
-           '4A', '4B', '4C', '4D',
-           '5A', '5B', '5C', '5D',
-           '6A', '6B', '6C', '6D']
-
-
-
-
-
-outx = track_copepod(15, vid_file)
-
 # need to wrangle output data
-# calculate distance
-# calculate dot product
 
-# cut too many frames before and after drop
-before_drop = outx.iloc[drop-1-(8*60):drop-1]
-after_drop = outx.iloc[drop-1:drop-1 + 8*60]
-time_df = pd.concat([before_drop, after_drop])
-len(time_df) == 960 # number of frames corresponding to two minutes
 
-# fill in nones at beginning; assumes small first move
-for i in range(len(outx['x'])):
-    print(outx.iloc[i]['x'])
+def wrangle_cop_data(df):
+    '''
+    Takes data frame from track_copepod. Standardizes it.
+    '''
+    # cut too many frames before and after drop
+    before_drop = df.iloc[drop-1-(8*60):drop-1]
+    after_drop = df.iloc[drop-1:drop + 8*60]
+    out_df = pd.concat([before_drop, after_drop])
+    if len(out_df) == 961: # number of frames corresponding to two minutes
+        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
+    else:
+        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
+        # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
+
+    # fill in missing coordinates at beginning; assumes small first move
+    for i in range(len(out_df['x'])):    
+        if out_df.iloc[i]['x'] is not None:
+            x,y = out_df.iloc[i]['x'], out_df.iloc[i]['y']
+            out_df.loc[0:i-1,'x'] = x
+            out_df.loc[0:i-1,'y'] = y
+            break
+
+    # calculate distance, remove x,y
+    out_df['x2'] = out_df['x'].shift(-1)
+    out_df['y2'] = out_df['y'].shift(-1)
+    out_df['distance'] = ( ((out_df['x2'] - out_df['x'])**2 + (out_df['y2'] - out_df['y'])**2) )**0.5
     
-    if outx.iloc[i]['x'] is not None:
-        x,y = outx.iloc[i]['x'], outx.iloc[i]['y']
-        outx.loc[0:i-1,'x'] = x
-        outx.loc[0:i-1,'y'] = y
-        break
-outx
+    # calculate dot product too
+    
+    # remove coordinates after calculating needed info
+    out_df = out_df.drop(['x2','y2'], axis = 1)
+    
+    return(out_df)
+
+
+
 
 # run on whole plate
 def track_whole_plate(video):
@@ -340,10 +345,13 @@ def track_whole_plate(video):
     plate, day = extract_plate_day_from_vid_file_name(video)
 
     for w in range(len(well_ids)):
-        out_df = track_copepod(w, video)
+        out_df = wrangle_cop_data(track_copepod(w, video))
         well_id = well_ids[w]
         out_fname = plate + "_" + well_id + "_" + day + ".csv"
         out_df.to_csv('track_data/' + out_fname)
         
-        
+
+
 track_whole_plate(vid_file)
+
+
