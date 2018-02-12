@@ -284,13 +284,20 @@ def extract_plate_day_from_vid_file_name(video):
 
 
 # need to wrangle output data
-
-
 def wrangle_cop_data(df):
     '''
     Takes data frame from track_copepod. Standardizes it.
     '''
-    # cut too many frames before and after drop
+    # fill in missing coordinates at beginning; assumes small first move
+    i = 0
+    x = None
+    while x is None:
+        x,y = df.iloc[i]['x'], df.iloc[i]['y']
+        i += 1
+    df.loc[0:i-1,'x'] = x
+    df.loc[0:i-1,'y'] = y  
+
+    # cut extra frames before and after drop
     before_drop = df.iloc[drop-1-(8*60):drop-1]
     after_drop = df.iloc[drop-1:drop + 8*60]
     out_df = pd.concat([before_drop, after_drop])
@@ -299,14 +306,6 @@ def wrangle_cop_data(df):
     else:
         out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
         # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
-
-    # fill in missing coordinates at beginning; assumes small first move
-    for i in range(len(out_df['x'])):    
-        if out_df.iloc[i]['x'] is not None:
-            x,y = out_df.iloc[i]['x'], out_df.iloc[i]['y']
-            out_df.loc[0:i-1,'x'] = x
-            out_df.loc[0:i-1,'y'] = y
-            break
 
     # calculate distance, remove x,y
     out_df['x2'] = out_df['x'].shift(-1)
@@ -320,10 +319,34 @@ def wrangle_cop_data(df):
           (out_df['y'] - out_df['y2']) * (out_df['y2'] - out_df['y3']))
     
     
-    # remove coordinates after calculating needed info
+    # remove coordinates after calculating new vars
     out_df = out_df.drop(['x2','y2','x3','y3'], axis = 1)
     
     return(out_df)
+
+
+
+
+
+before_drop = outx.iloc[drop-1-(8*60):drop-1]
+after_drop = outx.iloc[drop-1:drop + 8*60]
+out_df = pd.concat([before_drop, after_drop])
+    if len(out_df) == 961: # number of frames corresponding to two minutes
+        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
+    else:
+        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
+        # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
+
+# fill in missing coordinates at beginning; assumes small first move
+
+
+for i in range(len(out_df['x'])):    
+    if out_df.iloc[i]['x'] is not None:
+        print(i)
+        x,y = out_df.iloc[i]['x'], out_df.iloc[i]['y']
+        out_df.loc[0:i-1,'x']
+#        out_df.loc[0:i-1,'y'] = y
+        break
 
 
 
@@ -350,7 +373,7 @@ def track_whole_plate(video):
 
 
 
-vid_file = 'vid/plt20_day13.mov'
+vid_file = 'vid/pl1_day5.mov'
 tot_frames, vid_width, vid_height = video_attributes(vid_file)
 drop = find_drop(vid_file)
 rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
@@ -358,6 +381,8 @@ wells_before = find_wells(rand_imgs_before) # get average well position before
 wells_after = find_wells(rand_imgs_after) # get average well position after
 
 
+outx = track_copepod(18, vid_file)
+wrangle_cop_data(outx)
 
 track_whole_plate(vid_file)
 
