@@ -153,9 +153,9 @@ def find_copepod(binary_frame):
     # threshold from black to white
     params.minThreshold = 0;
     params.maxThreshold = 255;
-    # only blobs bigger than 9 pixels area, does not avoids all noise
+    # only blobs bigger than 10 pixels area, does not avoid all noise
     params.filterByArea = True
-    params.minArea = 9
+    params.minArea = 10
     # create a detector with the parameters
     ver = (cv2.__version__).split('.')
     if int(ver[0]) < 3 :
@@ -178,13 +178,88 @@ def find_copepod(binary_frame):
 
 
 
-def track_copepod(well, video):
+def track_copepod_before(well, video):
     # create masks to isolate the well, one for before and one for after drop
     tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
     xc, yc, rad = wells_before[well]
     d2 = (x - xc)**2 + (y - yc)**2
     mask_before = d2 > rad**2
+    
+    # open video
+    cap = cv2.VideoCapture(video)
+    # model for background subtraction
+    fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
+    
+    # run through video once to 'train' background model
+    while(cap.isOpened()):
+        frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
+        print(frame_n)
+        ret, frame = cap.read()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame[mask_before] = 0
+        frame = fgbg.apply(frame)
+        if frame_n >= drop:
+                break
+    
+    # reset at initial frame
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    ret, old_frame = cap.read()
+    old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
+    old_gray[mask_before] = 0
+    old_gray = fgbg.apply(old_gray)
+    old_gray = cv2.bitwise_not(old_gray) # makes binary
+    # output initial data
+    cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray)
+    out_array = np.array([[0, xp, yp, blobs, cop_qual]])
+    
+    while(cap.isOpened()):
+        frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
+        print(frame_n)
+        ret, frame = cap.read()
+        
+        if frame_n < drop:
+            # convert frame to grayscale
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray[mask_before] = 0
+            frame[mask_before] = 0
+            gray = fgbg.apply(gray)
+            gray = cv2.bitwise_not(gray)
+            
+            # find a copepod
+            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray)
+            if cop_found:
+                # make a row of data
+                out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
+                # draw circle around cop
+                cv2.circle(gray,(int(xc),int(yc)),4,(0,0,255), 2)
+                # reassign cop coord if it was found (moving)
+                xp, yp = xc, yc
+            else:
+                # if cop not found, use x-y coord from previous frame
+                out_row = np.array([frame_n, xp, yp, blobs, cop_qual])
+                if xp is not None:
+                    cv2.circle(gray,(int(xp),int(yp)),4,(255,0,0), 2)
+            
+            # create output array, frame-by-frame
+            out_array = np.append(out_array, [out_row], axis = 0)
+            
+            cv2.imshow('frame', gray)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        else:
+            break
+    # close video, return dataframe
+    cap.release()
+    cv2.destroyAllWindows()
+    return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs','blob_size']))
+
+
+
+def track_copepod_after(well, video):
+    # create masks to isolate the well, one for before and one for after drop
+    tot_frames, vid_width, vid_height = video_attributes(video)
+    x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
     xc, yc, rad = wells_after[well]
     d2 = (x - xc)**2 + (y - yc)**2
     mask_after = d2 > rad**2
@@ -193,13 +268,30 @@ def track_copepod(well, video):
     cap = cv2.VideoCapture(video)
     # model for background subtraction
     fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
-    # initialize frame and output data
+    
+    # run through video once to 'train' background model
+    cap.set(cv2.CAP_PROP_POS_FRAMES, drop)
+    while(cap.isOpened()):
+        frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
+        print(frame_n)
+        ret, frame = cap.read()
+        if ret == True: 
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frame[mask_after] = 0
+            frame = fgbg.apply(frame)
+        else:
+            break
+    
+    # reset at initial frame
+    cap.set(cv2.CAP_PROP_POS_FRAMES, drop)
     ret, old_frame = cap.read()
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    old_gray[mask_before] = 0
+    old_gray[mask_after] = 0
     old_gray = fgbg.apply(old_gray)
     old_gray = cv2.bitwise_not(old_gray) # makes binary
+    # output initial data
     cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray)
+    out_array = np.array([[drop, xp, yp, blobs, cop_qual]])
     
     while(cap.isOpened()):
         frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -209,50 +301,30 @@ def track_copepod(well, video):
         if ret==True:
             # convert frame to grayscale
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if frame_n == drop: # if at drop, reset background subtractor, record no data
-                fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False)
-                frame[mask_after] = 0
-                next
+            gray[mask_after] = 0
+            frame[mask_after] = 0
+            gray = fgbg.apply(gray)
+            gray = cv2.bitwise_not(gray)
+            # find a copepod
+            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray)
+         
+            if cop_found:
+                # make a row of data
+                out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
+                # draw circle around cop
+                cv2.circle(gray,(int(xc),int(yc)),4,(0,0,255), 2)
+                # reassign cop coord if it was found (moving)
+                xp, yp = xc, yc
             else:
-                # apply masks to frame depending on before or after drop
-                # remove background and invert (needed to detect blobs)
-                if frame_n < drop:
-                    gray[mask_before] = 0
-                    frame[mask_before] = 0
-                    gray = fgbg.apply(gray)
-                    gray = cv2.bitwise_not(gray)
-                else:
-                    gray[mask_after] = 0
-                    frame[mask_after] = 0
-                    gray = fgbg.apply(gray)
-                    gray = cv2.bitwise_not(gray)
+                # if cop not found, use x-y coord from previous frame
+                out_row = np.array([frame_n, xp, yp, blobs, cop_qual])
+                if xp is not None:
+                    cv2.circle(gray,(int(xp),int(yp)),4,(255,0,0), 2)
             
-                # find a copepod
-                cop_found, xc, yc, cop_qual, blobs = find_copepod(gray)
-                                
-                if cop_found:
-                    # make a row of data
-                    out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
-                    # draw circle around cop
-                    cv2.circle(frame,(int(xc),int(yc)),4,(0,0,255), 2)
-                    # reassign cop coord if it was found (moving)
-                    xp, yp = xc, yc
-                else:
-                    # if cop not found, use x-y coord from previous frame
-                    out_row = np.array([frame_n, xp, yp, blobs, cop_qual])
-                    if xp is not None:
-                        cv2.circle(frame,(int(xp),int(yp)),4,(255,0,0), 2)
+            # create output array, frame-by-frame
+            out_array = np.append(out_array, [out_row], axis = 0)
             
-
-                # create output array, frame-by-frame
-                try:
-                    out_array
-                except NameError:
-                    out_array = [out_row]
-                else:
-                    out_array = np.append(out_array, [out_row], axis = 0)
-
-            cv2.imshow('frame', frame)
+            cv2.imshow('frame', gray)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         else:
@@ -261,6 +333,12 @@ def track_copepod(well, video):
     cap.release()
     cv2.destroyAllWindows()
     return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs','blob_size']))
+
+
+
+
+
+
 
 
 def extract_plate_day_from_vid_file_name(video):
@@ -281,9 +359,23 @@ def extract_plate_day_from_vid_file_name(video):
 
 
 
-
-
 # need to wrangle output data
+def fill_missing_xy(df):
+    '''
+    Takes data frame from track_copepod. Fills cases where copepod was not moving.
+    '''
+    # fill in missing coordinates at beginning; assumes small first move
+    i = 0
+    x = None
+    while x is None:
+        x,y = df.iloc[i]['x'], df.iloc[i]['y']
+        i += 1
+    df.loc[0:i-1,'x'] = x
+    df.loc[0:i-1,'y'] = y  
+    return(df)
+    
+
+
 def wrangle_cop_data(df):
     '''
     Takes data frame from track_copepod. Standardizes it.
@@ -298,14 +390,14 @@ def wrangle_cop_data(df):
     df.loc[0:i-1,'y'] = y  
 
     # cut extra frames before and after drop
-    before_drop = df.iloc[drop-1-(8*60):drop-1]
-    after_drop = df.iloc[drop-1:drop + 8*60]
-    out_df = pd.concat([before_drop, after_drop])
-    if len(out_df) == 961: # number of frames corresponding to two minutes
-        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
-    else:
-        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
-        # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
+#    before_drop = df.iloc[drop-1-(8*60):drop-1]
+#   after_drop = df.iloc[drop-1:drop + 8*60]
+#    out_df = pd.concat([before_drop, after_drop])
+#    if len(out_df) == 961: # number of frames corresponding to two minutes
+#        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
+#    else:
+#        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
+     # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
 
     # calculate distance, remove x,y
     out_df['x2'] = out_df['x'].shift(-1)
@@ -318,7 +410,6 @@ def wrangle_cop_data(df):
     out_df['dot_product'] = ((out_df['x'] - out_df['x2']) * (out_df['x2'] - out_df['x3']) + 
           (out_df['y'] - out_df['y2']) * (out_df['y2'] - out_df['y3']))
     
-    
     # remove coordinates after calculating new vars
     out_df = out_df.drop(['x2','y2','x3','y3'], axis = 1)
     
@@ -328,25 +419,6 @@ def wrangle_cop_data(df):
 
 
 
-before_drop = outx.iloc[drop-1-(8*60):drop-1]
-after_drop = outx.iloc[drop-1:drop + 8*60]
-out_df = pd.concat([before_drop, after_drop])
-    if len(out_df) == 961: # number of frames corresponding to two minutes
-        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
-    else:
-        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
-        # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
-
-# fill in missing coordinates at beginning; assumes small first move
-
-
-for i in range(len(out_df['x'])):    
-    if out_df.iloc[i]['x'] is not None:
-        print(i)
-        x,y = out_df.iloc[i]['x'], out_df.iloc[i]['y']
-        out_df.loc[0:i-1,'x']
-#        out_df.loc[0:i-1,'y'] = y
-        break
 
 
 
@@ -365,6 +437,8 @@ def track_whole_plate(video):
 
     for w in range(len(well_ids)):
         out_df = wrangle_cop_data(track_copepod(w, video))
+        
+        
         well_id = well_ids[w]
         out_fname = plate + "_" + well_id + "_" + day + ".csv"
         out_df.to_csv('track_data/' + out_fname)
