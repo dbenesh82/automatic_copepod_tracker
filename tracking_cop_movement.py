@@ -13,6 +13,29 @@ from skimage.measure import compare_ssim as ssim
 from pathlib import Path
 
 
+
+### FUNCTIONS TO EXTRACT BASIC RECORDING INFORMATION
+
+
+def extract_plate_day_from_vid_file_name(video):
+    '''
+    Extract plate number and day of recording from video file name
+    '''
+    fname = Path(video).stem
+    plate, day = fname.split("_")
+    plate = [s for s in plate if s.isdigit()]
+    
+    if len(plate) > 1:
+        plate = ''.join(plate)
+    else:
+        plate = '0' + plate[0]
+
+    day = [s for s in day if s.isdigit()]
+    day = ''.join(day)
+    
+    return(plate, day)
+
+
 def video_attributes(video):
     '''
     Takes in video, returns number of frames, video width and video height
@@ -25,6 +48,10 @@ def video_attributes(video):
     return(tot_frames, vid_width, vid_height)
     cap.release() # close vid
     
+
+
+
+### FUNCTIONS TO DEFINE PLATE CHARACTERISTICS USED IN TRACKING, LIKE THE POSITION OF THE WELLS 
 
 
 def find_drop(video):
@@ -141,12 +168,17 @@ def find_wells(imgs):
 
 
 
+
+### FUNCTIONS FOR TRACKING COPEPODS
+
+
+
 def find_copepod(binary_frame):
     '''
     Take in binary image, returns the identified blobs.
     Parameters set to find moving cop, i.e. when it is in foreground not background.
     Returns whether cop was found, x-y coordinates, cop size, and number of blobs identified.
-    Helper in the track_copepod function.
+    Helper in the track_copepod functions.
     '''
     # setup blob detector parameters.
     params = cv2.SimpleBlobDetector_Params()
@@ -179,7 +211,7 @@ def find_copepod(binary_frame):
 
 
 def track_copepod_before(well, video):
-    # create masks to isolate the well, one for before and one for after drop
+    # create masks to isolate the well
     tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
     xc, yc, rad = wells_before[well]
@@ -252,12 +284,12 @@ def track_copepod_before(well, video):
     # close video, return dataframe
     cap.release()
     cv2.destroyAllWindows()
-    return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs','blob_size']))
+    return(pd.DataFrame(out_array, columns = ['frame', 'x', 'y', 'blobs', 'blob_size']))
 
 
 
 def track_copepod_after(well, video):
-    # create masks to isolate the well, one for before and one for after drop
+    # create masks to isolate the well
     tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
     xc, yc, rad = wells_after[well]
@@ -282,7 +314,7 @@ def track_copepod_after(well, video):
         else:
             break
     
-    # reset at initial frame
+    # reset at initial 'drop' frame
     cap.set(cv2.CAP_PROP_POS_FRAMES, drop)
     ret, old_frame = cap.read()
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
@@ -338,28 +370,10 @@ def track_copepod_after(well, video):
 
 
 
+### FUNCTIONS TO WRANGLE THE OUTPUTTED TRACKING DATA
 
 
 
-def extract_plate_day_from_vid_file_name(video):
-    fname = Path(video).stem
-    plate, day = fname.split("_")
-    plate = [s for s in plate if s.isdigit()]
-    
-    if len(plate) > 1:
-        plate = ''.join(plate)
-    else:
-        plate = '0' + plate[0]
-
-    day = [s for s in day if s.isdigit()]
-    day = ''.join(day)
-    
-    return(plate, day)
-
-
-
-
-# need to wrangle output data
 def fill_missing_xy(df):
     '''
     Takes data frame from track_copepod. Fills cases where copepod was not moving.
@@ -419,6 +433,8 @@ def wrangle_cop_data(df):
 
 
 
+
+### PUTTING IT ALL TOGETHER TO TRACK MULTIPLE COPEPODS ON A PLATE AND OUTPUT DATA TO CSV
 
 
 
