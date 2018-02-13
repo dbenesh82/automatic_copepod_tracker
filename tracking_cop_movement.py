@@ -54,7 +54,7 @@ def video_attributes(video):
 ### FUNCTIONS TO DEFINE PLATE CHARACTERISTICS USED IN TRACKING, LIKE THE POSITION OF THE WELLS 
 
 
-def find_drop(video):
+def find_drop(video, tot_frames):
     '''
     Takes in video, returns the frame at which plate is dropped
     '''
@@ -210,11 +210,11 @@ def find_copepod(binary_frame):
 
 
 
-def track_copepod_before(well, video):
+def track_copepod_before(well, video, wells_vec, drop):
     # create masks to isolate the well
     tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
-    xc, yc, rad = wells_before[well]
+    xc, yc, rad = wells_vec[well]
     d2 = (x - xc)**2 + (y - yc)**2
     mask_before = d2 > rad**2
     
@@ -288,11 +288,11 @@ def track_copepod_before(well, video):
 
 
 
-def track_copepod_after(well, video):
+def track_copepod_after(well, video, wells_vec, drop):
     # create masks to isolate the well
     tot_frames, vid_width, vid_height = video_attributes(video)
     x, y = np.meshgrid(np.arange(vid_width), np.arange(vid_height))
-    xc, yc, rad = wells_after[well]
+    xc, yc, rad = wells_vec[well]
     d2 = (x - xc)**2 + (y - yc)**2
     mask_after = d2 > rad**2
     
@@ -369,9 +369,7 @@ def track_copepod_after(well, video):
 
 
 
-
 ### FUNCTIONS TO WRANGLE THE OUTPUTTED TRACKING DATA
-
 
 
 def fill_missing_xy(df):
@@ -382,50 +380,51 @@ def fill_missing_xy(df):
     i = 0
     x = None
     while x is None:
-        x,y = df.iloc[i]['x'], df.iloc[i]['y']
+        x, y = df.iloc[i]['x'], df.iloc[i]['y']
         i += 1
     df.loc[0:i-1,'x'] = x
     df.loc[0:i-1,'y'] = y  
     return(df)
-    
 
 
-def wrangle_cop_data(df):
+def add_sec_to_df(df, half):
     '''
-    Takes data frame from track_copepod. Standardizes it.
+    Add seconds to data frame. Assigns drop as happening at t = 60s.
     '''
-    # fill in missing coordinates at beginning; assumes small first move
-    i = 0
-    x = None
-    while x is None:
-        x,y = df.iloc[i]['x'], df.iloc[i]['y']
-        i += 1
-    df.loc[0:i-1,'x'] = x
-    df.loc[0:i-1,'y'] = y  
+    # create vectors of seconds
+    l = len(df)
+    if half == 'before':
+        sec = np.arange(60 - (l * 1/8), 60, 1/8)
+    elif half == 'after':
+        sec = np.arange(60, 60 + (l * 1/8), 1/8)
+    else:
+        print("Non-valid entry for plate 'half'")
+    # check if they are correct length and then assign them
+    if l != len(sec):
+        print("Wrong length of time vector!")
+    df['sec'] = sec
+    return(df)
 
-    # cut extra frames before and after drop
-#    before_drop = df.iloc[drop-1-(8*60):drop-1]
-#   after_drop = df.iloc[drop-1:drop + 8*60]
-#    out_df = pd.concat([before_drop, after_drop])
-#    if len(out_df) == 961: # number of frames corresponding to two minutes
-#        out_df['sec'] = np.arange(0, 961/8, 1/8) # add seconds
-#    else:
-#        out_df['sec'] = np.arange(0, len(out_df)/8, 1/8)
-     # WORKS FOR STD CASE, NEED TO ADJUST FOR VIDS WITH TOO FEW FRAMES
 
-    # calculate distance, remove x,y
-    out_df['x2'] = out_df['x'].shift(-1)
-    out_df['y2'] = out_df['y'].shift(-1)
-    out_df['distance'] = ( ((out_df['x2'] - out_df['x'])**2 + (out_df['y2'] - out_df['y'])**2) )**0.5
+def calculate_distance_dot_product(df):
+    '''
+    Takes in a combined data frame (before and after drop) and calculates
+    the distance moved each frame and the dot product of vectors betweeen frames.
+    '''
+    out_df = df
+    # calculate distance
+    out_df['x_1'] = out_df['x'].shift(1)
+    out_df['y_1'] = out_df['y'].shift(1)
+    out_df['distance'] = ( ((out_df['x'] - out_df['x_1'])**2 + (out_df['y'] - out_df['y_1'])**2) )**0.5
     
     # calculate dot product
-    out_df['x3'] = out_df['x'].shift(-2)
-    out_df['y3'] = out_df['y'].shift(-2)
-    out_df['dot_product'] = ((out_df['x'] - out_df['x2']) * (out_df['x2'] - out_df['x3']) + 
-          (out_df['y'] - out_df['y2']) * (out_df['y2'] - out_df['y3']))
+    out_df['x_2'] = out_df['x'].shift(2)
+    out_df['y_2'] = out_df['y'].shift(2)
+    out_df['dot_product'] = ((out_df['x_2'] - out_df['x_1']) * (out_df['x_1'] - out_df['x']) + 
+          (out_df['y_2'] - out_df['y_1']) * (out_df['y_1'] - out_df['y']))
     
-    # remove coordinates after calculating new vars
-    out_df = out_df.drop(['x2','y2','x3','y3'], axis = 1)
+    # remove unneeded coordinates after calculating new vars
+    out_df = out_df.drop(['x_2','y_2','x_1','y_1'], axis = 1)
     
     return(out_df)
 
@@ -434,12 +433,10 @@ def wrangle_cop_data(df):
 
 
 
+
+
 ### PUTTING IT ALL TOGETHER TO TRACK MULTIPLE COPEPODS ON A PLATE AND OUTPUT DATA TO CSV
 
-
-
-
-# run on whole plate
 def track_whole_plate(video):
     # list of well ids
     well_ids = ['1A', '1B', '1C', '1D',
@@ -449,12 +446,24 @@ def track_whole_plate(video):
            '5A', '5B', '5C', '5D',
            '6A', '6B', '6C', '6D']
     
+    # get info about plate
     plate, day = extract_plate_day_from_vid_file_name(video)
+    tot_frames, vid_width, vid_height = video_attributes(video)
+    drop = find_drop(video, tot_frames)
+    rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
+    wells_before = find_wells(rand_imgs_before) 
+    wells_after = find_wells(rand_imgs_after)
 
     for w in range(len(well_ids)):
-        out_df = wrangle_cop_data(track_copepod(w, video))
-        
-        
+        # track cop
+        out_bef = track_copepod_before(w, video, wells_before, drop)
+        out_aft = track_copepod_after(w, video, wells_after, drop)
+        # wrangle data
+        out_bef, out_aft = fill_missing_xy(out_bef), fill_missing_xy(out_aft)
+        out_bef = add_sec_to_df(out_bef, 'before')
+        out_aft = add_sec_to_df(out_aft, 'after')
+        out_df = calculate_distance_dot_product(pd.concat([out_bef, out_aft]))
+        # output data frame to file
         well_id = well_ids[w]
         out_fname = plate + "_" + well_id + "_" + day + ".csv"
         out_df.to_csv('track_data/' + out_fname)
@@ -464,16 +473,6 @@ def track_whole_plate(video):
 
 
 vid_file = 'vid/pl1_day5.mov'
-tot_frames, vid_width, vid_height = video_attributes(vid_file)
-drop = find_drop(vid_file)
-rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
-wells_before = find_wells(rand_imgs_before) # get average well position before
-wells_after = find_wells(rand_imgs_after) # get average well position after
-
-
-outx = track_copepod(18, vid_file)
-wrangle_cop_data(outx)
-
 track_whole_plate(vid_file)
 
 
