@@ -84,7 +84,7 @@ def find_drop(video, tot_frames):
                     img_sim_min = img_simx
                     f_drop = frame_n
                         
-            print(round(frame_n/tot_frames * 100, 1), "%") # how far along?
+            print("Finding drop", round(frame_n/tot_frames * 100, 1), "%") # how far along?
             frame_p = frame_c
         else:
             break
@@ -276,9 +276,9 @@ def track_copepod_before(well, video, wells_vec, drop):
             # create output array, frame-by-frame
             out_array = np.append(out_array, [out_row], axis = 0)
             
-            cv2.imshow('frame', gray)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            #cv2.imshow('frame', gray)
+            #if cv2.waitKey(1) & 0xFF == ord('q'):
+             #   break
         else:
             break
     # close video, return dataframe
@@ -356,9 +356,9 @@ def track_copepod_after(well, video, wells_vec, drop):
             # create output array, frame-by-frame
             out_array = np.append(out_array, [out_row], axis = 0)
             
-            cv2.imshow('frame', gray)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            #cv2.imshow('frame', gray)
+            #if cv2.waitKey(1) & 0xFF == ord('q'):
+             #   break
         else:
             break
     # close video, return dataframe
@@ -471,32 +471,44 @@ def track_whole_plate(video):
            '5A', '5B', '5C', '5D',
            '6A', '6B', '6C', '6D']
     
-    # get info about plate
+    # get basic info about plate
     plate, day = extract_plate_day_from_vid_file_name(video)
     tot_frames, vid_width, vid_height = video_attributes(video)
     drop = find_drop(video, tot_frames)
+    # find well outlines
     rand_imgs_before, rand_imgs_after = get_random_images(video, tot_frames, drop, 50)
     wells_before = find_wells(rand_imgs_before) 
     wells_after = find_wells(rand_imgs_after)
+    # which ones should be tracked
+    wells_to_track_on_rec = wells_to_track[wells_to_track.plate == int(plate)]
+    wells_to_track_on_rec = wells_to_track_on_rec[wells_to_track_on_rec.day == int(day)]
+    wells_to_track_on_rec = wells_to_track_on_rec['well'].tolist()
 
     for w in range(len(well_ids)):
-        # track cop
-        out_bef = track_copepod_before(w, video, wells_before, drop)
-        out_aft = track_copepod_after(w, video, wells_after, drop)
-        # wrangle data
-        out_bef = add_sec_to_df(out_bef, 'before')
-        out_aft = add_sec_to_df(out_aft, 'after')
-        out_df = pd.concat([out_bef, out_aft], ignore_index = True)
-        out_df = fill_missing_xy(out_df)        
-        out_df = calculate_distance_dot_product(out_df)
-        # output data frame to file
         well_id = well_ids[w]
-        out_fname = plate + "_" + well_id + "_" + day + ".csv"
-        out_df.to_csv('track_data/' + out_fname)
+        # check if well should be tracked
+        if well_id not in wells_to_track_on_rec:
+            next
+        else: 
+            # IF HAPPY WITH TRACKER, ADD CHECK IF FILE EXISTS HERE SO NOT REPEATING
+            # track cop
+            out_bef = track_copepod_before(w, video, wells_before, drop)
+            out_aft = track_copepod_after(w, video, wells_after, drop)
+            # wrangle data
+            out_bef = add_sec_to_df(out_bef, 'before')
+            out_aft = add_sec_to_df(out_aft, 'after')
+            out_df = pd.concat([out_bef, out_aft], ignore_index = True)
+            out_df = fill_missing_xy(out_df)        
+            out_df = calculate_distance_dot_product(out_df)
+            # output data frame to file
+            out_fname = plate + "_" + well_id + "_" + day + ".csv"
+            out_df.to_csv('track_data/' + out_fname)
 
 
+# CHECK IF IT SHOULD BE TRACKED, THEN CHECK IF OUT FILE EXISTS, SKIP OR PROMPT TO REPLACE
 
 
+vid_file = 'vid/pl63_day5.mov'
+wells_to_track = pd.read_csv("wells_to_track.csv")
 
-vid_file = 'vid/pl26_day13.mov'
 track_whole_plate(vid_file)
