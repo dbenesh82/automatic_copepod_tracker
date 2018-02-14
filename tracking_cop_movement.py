@@ -203,6 +203,7 @@ def find_copepod(binary_frame):
     # if cop found, extract data
     if cop_found:
         (x,y), cop_qual = keypoints[0].pt, keypoints[0].size
+        x,y = round(x, 2), round(y,2)
     else:
         x,y,cop_qual = None,None,None
     return(cop_found, x, y, cop_qual, blobs)
@@ -264,21 +265,21 @@ def track_copepod_before(well, video, wells_vec, drop):
                 # make a row of data
                 out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
                 # draw circle around cop
-                cv2.circle(gray,(int(xc),int(yc)),4,(0,0,255), 2)
+                cv2.circle(frame,(int(xc),int(yc)),4,(0,0,255), 2)
                 # reassign cop coord if it was found (moving)
                 xp, yp = xc, yc
             else:
                 # if cop not found, use x-y coord from previous frame
                 out_row = np.array([frame_n, xp, yp, blobs, cop_qual])
                 if xp is not None:
-                    cv2.circle(gray,(int(xp),int(yp)),4,(255,0,0), 2)
+                    cv2.circle(frame,(int(xp),int(yp)),4,(255,0,0), 2)
             
             # create output array, frame-by-frame
             out_array = np.append(out_array, [out_row], axis = 0)
             
-            #cv2.imshow('frame', gray)
+            #cv2.imshow('frame', frame)
             #if cv2.waitKey(1) & 0xFF == ord('q'):
-             #   break
+            #    break
         else:
             break
     # close video, return dataframe
@@ -358,7 +359,7 @@ def track_copepod_after(well, video, wells_vec, drop):
             
             #cv2.imshow('frame', gray)
             #if cv2.waitKey(1) & 0xFF == ord('q'):
-             #   break
+            #    break
         else:
             break
     # close video, return dataframe
@@ -508,7 +509,25 @@ def track_whole_plate(video):
 # CHECK IF IT SHOULD BE TRACKED, THEN CHECK IF OUT FILE EXISTS, SKIP OR PROMPT TO REPLACE
 
 
-vid_file = 'vid/pl63_day5.mov'
+
+
+# get list of all mov files
+cwd = Path.cwd()
+vid_folder = cwd.parent/"GxG_videos"
+dirs = [x for x in vid_folder.iterdir() if x.is_dir()] # get all the directories in folder
+vids_paths = []
+for d in dirs:
+    f1 = list(d.glob("*.mov"))        # list mov files in folder
+    vids_paths = vids_paths + f1
+
+# get wells to track
 wells_to_track = pd.read_csv("wells_to_track.csv")
 
-track_whole_plate(vid_file)
+# loop through vid paths
+#for vid in vids_paths:
+ #   track_whole_plate(str(vid))
+
+
+# track_whole_plate(str(vids_paths[0]))
+
+
