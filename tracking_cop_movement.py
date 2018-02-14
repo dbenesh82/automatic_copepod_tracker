@@ -374,18 +374,43 @@ def track_copepod_after(well, video, wells_vec, drop):
 
 def fill_missing_xy(df):
     '''
-    Takes data frame from track_copepod. Fills cases where copepod was not moving.
+    Takes combined data frame from track_copepod, before and after.
+    Fills cases where copepod was not moving.
     '''
-    # fill in missing coordinates at beginning; assumes small first move
-    i = 0
-    x = None
-    while x is None:
+    # if all are missing, i.e. tracker did not detect movement, then
+    # fill with arbitrary coordinate to be able to calculate zero distances
+    if len(df) == df['x'].isnull().sum():
+        df['x'] = 1
+        df['y'] = 1
+    # if last value is missing, no movement was detected after the drop
+    # fill with previous position detected (forward fill)
+    if df.iloc[len(df)-1]['x'] is None:
+        i = len(df)-1
         x, y = df.iloc[i]['x'], df.iloc[i]['y']
-        i += 1
-    df.loc[0:i-1,'x'] = x
-    df.loc[0:i-1,'y'] = y  
+        while x is None:
+            i = i-1
+            x, y = df.iloc[i]['x'], df.iloc[i]['y']
+        df.loc[i:len(df)-1,'x'] = x
+        df.loc[i:len(df)-1,'y'] = y
+    # if still missing coordinates, such as at beginning, before movement detected
+    # fill with next position detected (backward fill)
+    if df['x'].isnull().sum() > 0:
+        i = 0
+        x = None
+        for i in range(len(df)):
+            x, y = df.iloc[i]['x'], df.iloc[i]['y']
+            if x is None:
+                j = i # row where empty cells start
+                while x is None and i < len(df):
+                    i += 1
+                    x, y = df.iloc[i]['x'], df.iloc[i]['y']
+                df.loc[j:i-1,'x'] = x
+                df.loc[j:i-1,'y'] = y
+            else:
+                next
     return(df)
 
+    
 
 def add_sec_to_df(df, half):
     '''
@@ -450,7 +475,7 @@ def track_whole_plate(video):
     plate, day = extract_plate_day_from_vid_file_name(video)
     tot_frames, vid_width, vid_height = video_attributes(video)
     drop = find_drop(video, tot_frames)
-    rand_imgs_before, rand_imgs_after = get_random_images(vid_file, tot_frames, drop, 50)
+    rand_imgs_before, rand_imgs_after = get_random_images(video, tot_frames, drop, 50)
     wells_before = find_wells(rand_imgs_before) 
     wells_after = find_wells(rand_imgs_after)
 
@@ -459,20 +484,19 @@ def track_whole_plate(video):
         out_bef = track_copepod_before(w, video, wells_before, drop)
         out_aft = track_copepod_after(w, video, wells_after, drop)
         # wrangle data
-        out_bef, out_aft = fill_missing_xy(out_bef), fill_missing_xy(out_aft)
         out_bef = add_sec_to_df(out_bef, 'before')
         out_aft = add_sec_to_df(out_aft, 'after')
-        out_df = calculate_distance_dot_product(pd.concat([out_bef, out_aft]))
+        out_df = pd.concat([out_bef, out_aft], ignore_index = True)
+        out_df = fill_missing_xy(out_df)        
+        out_df = calculate_distance_dot_product(out_df)
         # output data frame to file
         well_id = well_ids[w]
         out_fname = plate + "_" + well_id + "_" + day + ".csv"
         out_df.to_csv('track_data/' + out_fname)
-        
 
 
 
 
-vid_file = 'vid/pl1_day5.mov'
+
+vid_file = 'vid/pl26_day13.mov'
 track_whole_plate(vid_file)
-
-
