@@ -30,10 +30,11 @@ bd <- select(bd, fname, cop_name, day,
 bd$dist[bd$slice == 1 & bd$dist == -1] <- NA
 ```
 
+
 ```{r}
 # import automatic data
 dfiles = list.files(path = "../track_data/")
-rm(bda)
+if(exists('bda')) {rm(bda)}
 for(d in dfiles){
   fil <- paste0("../../04_5automatic_tracking/track_data/", d)
   dx <- read.csv(file = fil, header = TRUE)
@@ -49,17 +50,14 @@ for(d in dfiles){
     bda <- dx
   }
 }
+rm(cop_name, d, fil, fname, plate)
 ```
-
-
 
 ```{r}
-# remove those that died from automatically tracked data
-bda <- left_join(bda, infd)
-bda <- filter(bda, dead == 0)
+head(bda)
 ```
 
-Let's look at the automatically tracked data across time.
+Let's look at the automatically tracked data across time. Clearly, there is the peak at the drop point.
 
 ```{r}
 ggplot(bda, aes(x = sec, y = distance)) + geom_point(alpha = 0.1)
@@ -74,7 +72,7 @@ ggplot(bda_avg, aes(x = sec, y = dist_m, color = plate)) + geom_line() +
   coord_cartesian(ylim = c(0,3))
 ```
 
-Two measures of detection quality were retained: blob size and number of blobs. Blobs are what the tracker detected, whereas blob size is the size of the blobs. Big blobs are more reliable and less likely static. When multiple blobs are detected, it might be a problem with background subtraction in the tracker. Clearly, the transition from before to after the drop is associated with lots of blobs.
+Two measures of detection quality were retained: blob size and number of blobs. Blobs are what the tracker detects in each frame. Big blobs are more reliable and less likely static noise in the video. When multiple blobs are detected, it might be a problem with background subtraction in the tracker. Clearly, the transition from before to after the drop is associated with detecting extra blobs.
 
 ```{r}
 ggplot(bda, aes(x = sec, y = blobs)) + geom_point(alpha = 0.1)
@@ -83,10 +81,10 @@ ggplot(bda, aes(x = sec, y = blobs)) + geom_point(alpha = 0.1)
 The size of the blob is not obviously related to time, though there is a gap after the drop (60s), because they just aren't detected there.
 
 ```{r}
-ggplot(bda, aes(x = sec, y = blob_size)) + geom_point(alpha = 0.1)
+ggplot(bda, aes(x = sec, y = blob_size)) + geom_point(alpha = 0.05)
 ```
 
-Small blobs do not make the biggest jumps. This is good and suggests the parameters are set well, i.e. not detecting noise from one frame to the next.
+The smallest blobs tend to move large distances, suggesting these might not be the most reliable points. Increasing the blob size filtered out by the tracker, though, reduces the detection sensitivity. It is a tradeoff.
 
 ```{r}
 ggplot(bda, aes(y = log(distance + 1), x = blob_size)) + geom_point(alpha = 0.1) + geom_smooth()
@@ -98,103 +96,135 @@ There are some really big jumps. A value of 120 pixels means it jumped across th
 ggplot(bda, aes(x = distance)) + geom_histogram(binwidth = 1)
 ```
 
-Zooming in on the left-hand side of the distribution, we see that in most frames no movement was recorded. Some very small positive values may just represent noise. The hump after the smallest values are likely the common copepod movements.
+Zooming in on the left-hand side of the distribution, we see that in most frames no movement was recorded. The hump after the null values are likely the common copepod movements.
 
 ```{r}
-ggplot(bda, aes(x = distance)) + geom_histogram(binwidth = 0.1) + coord_cartesian(xlim = c(0,5))
+ggplot(bda, aes(x = distance)) + geom_histogram(binwidth = 0.05) + coord_cartesian(xlim = c(0,5))
 ```
 
-The biggest values are obviously mistakes by the auto tracker. Let's look at the cumulative distribution of movement values for the auto tracker and the manual tracking (the different time scales of auto vs manual tracking require them to be scaled). About 100% of manually tracked moved less than 5 pixels per sec. The automatic tracked ones (black) have about 10% moving more than this. This discrepancy is probably due to tracking mistakes. Anything more than 10 pix/sec is probably a false positive.
-
-REEVALUATE THIS!!
+Zooming in on these typical movements, it looks like slightly right-skewed distribution with a long, fat tail of larger hops.
 
 ```{r}
-ggplot(bda, aes(distance/8)) + stat_ecdf(geom='step') +
-  stat_ecdf(data = bd, aes(dist*2), geom='step', color = 'red') +
+ggplot(bda, aes(x = distance)) + geom_histogram(binwidth = 0.025) + 
+  scale_x_continuous(limits = c(0.01,5))
+```
+
+When we zoom in on the tail, it also appears skewed. 
+
+```{r}
+ggplot(bda, aes(x = distance)) + geom_histogram(binwidth = 0.5) + 
+  scale_x_continuous(limits = c(2,30))
+```
+
+Thus, besides the spike at zero, there is not obvious bimodality of the distribution in movements tracked. Nonetheless, the biggest values are presumably mistakes by the auto tracker. Let's look at the cumulative distribution of movement values for the auto tracker versus manual tracking. The different time scales of auto vs manual tracking require them to be scaled; auto tracker worked at 8 frames/second while the manual tracking was done at 1 frame/2 seconds. About 100% of manually tracked moved less than 5 pixels per sec (red line). About 10% of the auto tracked values (black) were larger than this. Presumably, this discrepancy is due to tracking mistakes. I would guess that anything over 30 or 40 is a mistake by the auto tracker.
+
+```{r}
+ggplot(bda, aes(distance*8)) + stat_ecdf(geom='step') +
+  stat_ecdf(data = bd, aes(dist/2), geom='step', color = 'red') +
   labs(x = 'pix/s', y = 'cum dist') +
   coord_cartesian(xlim = c(0,50), ylim = c(0.4,1))
 ```
 
-In almost all cases, either no blobs were found (cop melts into background) or just one. But there are cases, where many were detected.
+This is a cumulative distribution for velocities. Maybe the total distances moved are more comparable, i.e. we sum the distances moved over a given time period, in this case 2 seconds.
+
+```{r}
+bds <- filter(bda, sec >= 0, sec <= 120)
+sec_pooled <- c(rep(seq(0, 60, 2), each = 16),
+              NA,
+              rep(seq(62, 118,2), each = 16))
+bds$sec_pooled <- rep(sec_pooled, times = length(unique(bds$cop_name)))
+
+bda_avg <- group_by(bds, cop_name, sec_pooled)%>%
+  summarise(dist_moved = sum(distance,na.rm=T))
+
+ggplot(bda_avg, aes(dist_moved)) + stat_ecdf(geom='step') +
+  stat_ecdf(data = bd, aes(dist*2), geom='step', color = 'red') +
+  labs(x = 'pixels moved in 2s', y = 'cum dist') +
+  coord_cartesian(xlim = c(0,50), ylim = c(0.4,1))
+```
+There is still an overabundance of large movements in the auto-tracking data. This may be due to small movements accumulating or to accidental measurements of large movements.
+
+Let's look at possible indicators of tracking mistakes. In almost all cases, either no blobs were found (cop melts into background) or just one. But there are cases, where many blobs were detected.
 
 ```{r}
 round(prop.table(table(bda$blobs)), digits = 3)
 ```
 
-Large movements seem to be associated with more blobs. This happens when something is detected which is not the copepod, and the tracker makes a large 'jump'.
+Large movements are associated with more blobs. This happens when something is detected which is not the copepod, and the tracker makes a large 'jump'.
 
 ```{r}
 ggplot(bda, aes(x = factor(blobs), y = distance)) + geom_boxplot() 
 ```
 
-When multiple blobs are detected, they are usually smaller sized.
+Also, when multiple blobs are detected by the tracker, the biggest one tends to be smaller, suggesting that something other than the copepod may be being detected.
 
 ```{r}
 ggplot(bda, aes(x = factor(blobs), y = blob_size)) + geom_boxplot()
 ```
 
-No obviously two classes of blobs, from their size.
+Blob size is not obviously bimodal, so I cannot distinguish copepods from noise based on size.
 
 ```{r}
 ggplot(bda, aes(x = blob_size)) + geom_histogram()
 ```
 
-Large movements are not associated with small blobs, so they are not predictive of false positives.
+Large movements are somewhat associated with the smallest blobs. The combination of blob size and number may hint at tracker mistakes.
 
 ```{r}
-ggplot(bda, aes(x = blob_size, y = distance, size = blobs)) + geom_point(alpha = 0.05)
+ggplot(bda, aes(x = blob_size, y = log(distance+1), size = blobs)) + geom_point(alpha = 0.05) + geom_smooth(se=F)
 ```
 
-Here demonstrates that blob size is not predictive, but detecting multiple blobs is associated with larger movements.
+Looking at the interaction between blob size, blobs detected, and distance moved, we see that detecting multiple blobs, with a small blob size, is associated with larger movements. This might be useful for 'correcting' mistakes.
 
 ```{r}
 bda <- mutate(bda, mult_blobs = if_else(blobs>1, "multiple","one"))
 ggplot(bda, aes(x = blob_size, y = distance, color = mult_blobs)) + geom_point(alpha = 0.1) + geom_smooth(se = F)
 ```
 
-```{r}
-summary(bda$blob_size)
-```
+So the tracker is not perfect, but let's see how it compares to our manual tracking. We'll plot the total distance moved by the copepod, with manual tracking on the x and auto tracking on the y.
 
-
-Ok, so the tracker is not perfect, but let's see how it compares to our manual tracking. We'll plot the total distance moved by the copepod, with manual tracking on the x and auto tracking on the y. The correlation is clear.
-
-```{r}
-bda_avg <- group_by(bda, fname)%>%
+```{r message=FALSE, warning=FALSE}
+# remove the 'drop' in both cases
+bda_avg <- filter(bda, sec >= 0, sec <= 120, sec != 60)%>%
+  group_by(fname)%>%
   summarise(dist_a = sum(distance, na.rm=T))
-bd_avg <- group_by(bd, fname)%>%
+bd_avg <- filter(bd, slice != 32)%>%
+  group_by(fname)%>%
   summarise(dist_m = sum(dist, na.rm=T))
 bd_avg <- filter(bd_avg, fname %in% bda_avg$fname)
 
 bd_comb <- left_join(bd_avg, bda_avg)
 
-ggplot(bd_comb, aes(dist_m, dist_a)) + geom_point()
+ggplot(bd_comb, aes(dist_m, dist_a/8)) + geom_point()
 ```
 
-R2 is about 89%. Not bad.
+The correlation is clear, with R2 about 0.74. There are obviously a couple of cases where the auto-tracker recorded much more than the manual tracker. I double-checked the outlier here. The edge of the well was cut-off in the video, so the mask around the was not as effect as it should have been and consequently there was static being detected as movement along the well's outer edge. Seems hard to fix this with the tracker, but as seen below, when we exclude suspicious values, the correlation strengthens.
+
+Additionally, the slope is greater than 1, indicating the auto tracker has the copepods traveling a larger distance during the recording.
 
 ```{r}
 summary(lm(dist_a/8 ~ dist_m, data = bd_comb))
 ```
 
-We might do even better if we remove the values that are likely false positives (big jumps). The correlation does not get tighter.
+We might do even better if we remove the values that are likely false positives (big jumps).
 
-```{r}
-bda_avg <- filter(bda, distance < 20)%>%
+```{r message=FALSE, warning=FALSE}
+bda_avg <- filter(bda, sec >= 0, sec <= 120, sec != 60, distance < 35)%>%
   group_by(fname)%>%
   summarise(dist_a = sum(distance, na.rm=T))
 
 bd_comb <- left_join(bd_avg, bda_avg)
 
 ggplot(bd_comb, aes(dist_m, dist_a/8)) + geom_point()
-
 ```
+
+The slope of the correlation gets closer to 1, and R2 increases to 0.89.
 
 ```{r}
 summary(lm(dist_a/8 ~ dist_m, data = bd_comb))
 ```
 
-I imagine a couple meaningful metrics from these data: total distance moved, variability in distance hopped 'hoppiness', and change in direction. Are these correlated?
+I imagine a couple metrics taken from the auto-tracker data: total distance moved, velocity, variability in distance per frame, and change in direction. Are these correlated?
 
 ```{r}
 bd_avg <- group_by(bda, fname)%>%
@@ -203,27 +233,50 @@ bd_avg <- group_by(bda, fname)%>%
             hoppy = var(distance, na.rm=T),
             dot_mean = mean(dot_product, na.rm=T),
             dot_var = var(dot_product, na.rm=T))
-
-ggplot(bd_avg, aes(dist, dot_var)) + geom_point() + geom_smooth(se=F)
 ```
 
-Let's look at changes of direction.
+First, total distance moved and average velocity are essentially identical; copepods that move the same distance during a recording have by necessity the same average speed.
 
 ```{r}
-summary(bda$dot_product)
+ggplot(bd_avg, aes(dist, vel)) + geom_point() + geom_smooth(se=F)
+```
+
+But there is some variation in how 'hoppy' copepods are, i.e. whether they move a given distance slow and steady or quick and jerky. In the plot below, high values, relative to the distance, suggest more 'jerky' movements (or more tracker mistakes).
+
+```{r}
+ggplot(bd_avg, aes(dist, hoppy)) + geom_point() + geom_smooth(se=F)
+```
+
+Let's look at changes of direction, as quantified by the dot products between consecutive two vectors. Here's the distribution of dot products.
+
+```{r}
 ggplot(filter(bda, dot_product != 0), aes(dot_product)) +
-  geom_histogram(binwidth = 1) + coord_cartesian(xlim = c(-10,10))
+  geom_histogram(binwidth = 0.5) + coord_cartesian(xlim = c(-10,10))
+```
+
+Mostly, they are zero, which makes sense as copepods usually did not move in most frames. There is also a tendency for the data to skew positive, suggesting copepods tend to move in the same direction, as opposed to changing directions between frames.
+
+The largest dot products occur around the drop point and skew negative. This is quite suggestive of tracking mistakes.
+
+```{r}
+ggplot(bda, aes(x = sec, y = dot_product)) + geom_point(alpha = 0.1)
+```
+
+Zooming in, we can see the positive skew clearly (more positive than negative dot_products). There is not an obvious change over time, such as fewer negative dot products after being scared.
+
+```{r}
+ggplot(bda, aes(x = sec, y = dot_product)) + geom_point(alpha = 0.1) + scale_y_continuous(limits = c(-100, 100))
+```
+
+When plotting distance versus dot product, we see that large movements are sometimes associated with negative dot products. This probably represents mistakes where the tracker jumps to something other than the copepod and then back. When distance is large and the dot product is zero, this may be a jump from a non-moving copepod to something that was detected.
+
+```{r}
+ggplot(bda, aes(x = distance, y = dot_product)) + geom_point(alpha = 0.1) 
 ```
 
 ```{r}
-ggplot(bda, aes(x = distance, y = dot_product)) + geom_point(alpha = 0.1) + coord_cartesian(ylim = c(-100,100))
+filter(bda, fname == "54_3D_17", frame %in% 486:490)
 ```
 
 
-
-Problematic! For some reason x and y sometimes not recorded.
-
-```{r}
-filter(bda, is.na(x))
-```
-
+So a combination of values hint at tracking mistakes: large distances, large negative dot products, many blobs, blobs of small size. In combination, they might flag the mistakes. But it is worth remembering that (i) mistakes should be randomized across treatments and (ii) the results are comparable to manual tracking.
