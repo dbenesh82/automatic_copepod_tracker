@@ -76,7 +76,8 @@ for v in vids_paths:
                               "frames": tot_frames,
                               "fps": frame_rate,
                               "drop": None,
-                              "tracked": "No"}, index = [0])
+                              "tracked": "No",
+                              "drop_img_sim": None}, index = [0])
     try:
         out_df
     except NameError:
@@ -85,7 +86,7 @@ for v in vids_paths:
         out_df = pd.concat([out_df, out_entry], ignore_index=True)
 
 # export the table to file
-out_df.to_csv("video_tbl/video_table.csv")
+out_df.to_csv("video_tbl/video_table.csv", index_label = "index")
 
 
 
