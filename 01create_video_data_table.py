@@ -7,7 +7,7 @@ Created on Thu Feb 15 07:43:39 2018
 Here I loop through the video files and extract basic information from them,
 such as width, height, frame rate, etc. This information is exported to a
 csv. It is then amended with additional information in the 
-'02find_drop_all_videos.py' and XXX.py files.
+'02find_drop_all_videos.py' and '03tracking_cop_movement.py' files.
 """
 
 import pandas as pd
