@@ -88,7 +88,7 @@ def track_copepod_before(well, video, wells_vec, drop, vid_width, vid_height):
     
     # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    out = cv2.VideoWriter('vids/demo.avi',fourcc, 16, (vid_width, vid_height))
+    out = cv2.VideoWriter('vids/demo.mp4',fourcc, 32, (vid_width, vid_height))
     
     # model for background subtraction
     fgbg = cv2.createBackgroundSubtractorMOG2(history = 500,detectShadows = False) 
@@ -120,7 +120,7 @@ def track_copepod_before(well, video, wells_vec, drop, vid_width, vid_height):
         frame_n = cap.get(cv2.CAP_PROP_POS_FRAMES)
         ret, frame = cap.read()
         
-        if frame_n < 80:
+        if frame_n < 150:
             out.write(frame)
             cv2.imshow('frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):

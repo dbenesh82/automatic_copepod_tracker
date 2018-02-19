@@ -97,7 +97,7 @@ def find_wells(imgs):
 
 ### FUNCTIONS FOR TRACKING COPEPODS
 
-def find_copepod(binary_frame):
+def find_copepod(binary_frame, xp, yp):
     '''
     Take in binary image, returns the identified blobs.
     Parameters set to find moving cop, i.e. when it is in foreground not background.
@@ -109,9 +109,9 @@ def find_copepod(binary_frame):
     # threshold from black to white
     params.minThreshold = 0;
     params.maxThreshold = 255;
-    # only blobs bigger than 10 pixels area, does not avoid all noise
+    # only blobs bigger than 7 pixels area, does not avoid all noise
     params.filterByArea = True
-    params.minArea = 10
+    params.minArea = 7
     # create a detector with the parameters
     ver = (cv2.__version__).split('.')
     if int(ver[0]) < 3 :
@@ -128,8 +128,19 @@ def find_copepod(binary_frame):
     if cop_found:
         (x,y), cop_qual = keypoints[0].pt, keypoints[0].size
         x,y = round(x, 2), round(y,2)
+        # if multiple blobs found, find blob closest to current position
+        if len(keypoints) > 1 and xp is not None: 
+            dist_min = 120
+            for i in range(len(keypoints)):
+                (x,y), cop_qual = keypoints[i].pt, keypoints[i].size
+                dist = ( ((x - xp)**2 + (y - yp)**2) )**0.5
+                if dist < dist_min:
+                    i_min = i
+                    dist_min = dist
+            (x,y), cop_qual = keypoints[i_min].pt, keypoints[i_min].size
+    # if no blob found, return previous coordinates
     else:
-        x,y,cop_qual = None,None,None
+        x,y,cop_qual = xp, yp, None
     return(cop_found, x, y, cop_qual, blobs)
 
 
@@ -165,7 +176,7 @@ def track_copepod_before(well, video, wells_vec, drop, vid_width, vid_height):
     old_gray = fgbg.apply(old_gray)
     old_gray = cv2.bitwise_not(old_gray) # makes binary
     # output initial data
-    cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray)
+    cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray, None, None)
     out_array = np.array([[0, xp, yp, blobs, cop_qual]])
     
     while(cap.isOpened()):
@@ -181,7 +192,7 @@ def track_copepod_before(well, video, wells_vec, drop, vid_width, vid_height):
             gray = cv2.bitwise_not(gray)
             
             # find a copepod
-            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray)
+            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray, xp, yp)
             if cop_found:
                 # make a row of data
                 out_row = np.array([frame_n, xc, yc, blobs, cop_qual])
@@ -242,7 +253,7 @@ def track_copepod_after(well, video, wells_vec, drop, vid_width, vid_height):
     old_gray = fgbg.apply(old_gray)
     old_gray = cv2.bitwise_not(old_gray) # makes binary
     # output initial data
-    cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray)
+    cop_found, xp, yp, cop_qual, blobs = find_copepod(old_gray, None, None)
     out_array = np.array([[drop, xp, yp, blobs, cop_qual]])
     
     while(cap.isOpened()):
@@ -257,7 +268,7 @@ def track_copepod_after(well, video, wells_vec, drop, vid_width, vid_height):
             gray = fgbg.apply(gray)
             gray = cv2.bitwise_not(gray)
             # find a copepod
-            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray)
+            cop_found, xc, yc, cop_qual, blobs = find_copepod(gray, xp, yp)
          
             if cop_found:
                 # make a row of data
@@ -475,8 +486,13 @@ for d in dirs:
     vids_paths = vids_paths + f1
 
 
+# track a random sample to compare with manual tracker
+rvid = random.sample(range(len(vids_paths)), 100)
+for r in rvid:
+    vid = str(vids_paths[r])
+    track_whole_plate(vid)
 
 # loop through videos, track copepods in each
-for vid in vids_paths:
-   track_whole_plate(str(vid))
+#for vid in vids_paths:
+ #  track_whole_plate(str(vid))
 

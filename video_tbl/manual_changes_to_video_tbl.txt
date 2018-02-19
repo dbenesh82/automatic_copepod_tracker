@@ -1,0 +1,5 @@
+In a few plates, the drop was not clearly identified (image similarity too high). I manually found them with ImageJ and altered the video table.
+
+pl49_day11, drop = 1081
+pl61_day9, drop = 492
+plt4_day9, drop = 725
