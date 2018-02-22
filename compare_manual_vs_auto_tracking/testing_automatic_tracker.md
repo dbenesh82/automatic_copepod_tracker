@@ -4,11 +4,11 @@ Dan Benesh
 
 I wrote a [script](../03tracking_cop_movement.py) to automatically track copepod movement in video recordings. This notebook explores its accuracy and how it might be improved.
 
-Recordings were two minutes long. The well-plates containing the copepods were dropped a few mm in a standardized way after a minute in order to observe the copepod response. When we plot copepod movement over the two minutes of recording, we clearly see there is a peak at the drop point. The drop happens so fast that copepods cannot be tracked during it. Rather, the peak in movements represents tracking mistakes.
+Recordings were two minutes long. After a minute, the well-plates containing the copepods were dropped a few mm in a standardized way to observe the copepod response to a 'shock'. When we plot copepod movement over the two minutes, we clearly see there is a peak at the drop point. The drop happens so fast that copepods cannot be tracked during it. Rather, the spike in movement represents tracking mistakes.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-2-1.png)
 
-Looking at the distribution of copepod movements, there are some really big values. A value of 120 pixels means it jumped across the whole well in an eighth of a second, which is not realistic.
+Looking at the distribution of copepod movements, there are some very big values. A value of 120 pixels means it jumped across the whole well in an eighth of a second, which is not realistic.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-3-1.png)
 
@@ -20,15 +20,15 @@ Zooming in on these typical movements, it looks like a right-skewed distribution
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-5-1.png)
 
-When we zoom in on the far end of the tail, the distribution appears comparatively flat, which suggests that mistakes can create a range of high distance values with equal probability.
+When we zoom in on the far end of the tail, which are presumably mistakes, the distribution appears comparatively flat. This suggests that mistakes can create a range of high values with about equal probability.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-6-1.png)
 
-A better overview of the whole distribution is seen when we log transform the movement values. Now, it looks like a mixture of distributions. A large peak of small movements, much of which may be just noise, i.e. the tracker oscillating a few pixels. Then, there is a second smaller peak which presumably represents typical copepod movements. Finally, there appears to be another peak which rises after a log value of ~3. These are presumably the tracking mistakes.
+A better overview of the whole distribution is seen when we log transform the movement values. Now, it looks like a mixture of distributions. The largest peak is of small movements, much of which may be just noise, i.e. the tracker oscillating a few pixels. Then, there is a second smaller peak which presumably represents typical copepod movements. Finally, there appears to be another peak which rises after a log value of ~3. These are presumably the tracking mistakes where the tracker mistakenly identifies something besides the copepod far away from the last position.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-7-1.png)
 
-Another way to try and identify mistakes by the auto tracker is to compare it to manual tracking. Let's look at the cumulative distribution of movement values for the auto tracker versus manual tracking. The different time scales of auto vs manual tracking requires scaling for comparison; the auto tracker worked at 8 frames/second while the manual tracking was done at 1 frame/2 seconds. About 100% of the manually tracked values were less than 5 pixels per sec (red line). About 13% of the auto tracked values (black) were larger than this. Some of this discrepancy is due to tracking mistakes, but some of it may also be due to the time scale of copepod movements, i.e. they might move similar distances in an 1/8 of a second and in 2 seconds, such that the velocities are much higher for the auto tracker.
+Another way to try and identify mistakes by the auto tracker is to compare it to manual tracking. Let's look at the cumulative distribution of movement values for the auto tracker versus manual tracking. The different time scales of auto vs manual tracking requires scaling for comparison; the auto tracker worked at 8 frames/second while the manual tracking was done at 1 frame/2 seconds. About 100% of the manually tracked values were less than 5 pixels per sec (red line). About 13% of the auto tracked values (black) were larger than this. Some of this discrepancy is surely due to tracking mistakes, but some of it may also be due to the time scale of copepod movements, i.e. they might move similar distances in an 1/8 of a second and in 2 seconds, such that the velocities are much higher for the auto tracker.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-8-1.png)
 
@@ -48,15 +48,15 @@ Obviously, it would be nice to identify and eliminate tracking mistakes. Two mea
     ##    24    25    26    29    32 
     ## 0.000 0.000 0.000 0.000 0.000
 
-If more than 2 blobs are detected, usually the movements recorded are large. Presumably, this happens when something is detected which is not the copepod, and the tracker makes a large 'jump'. After noticing this pattern, I revised the tracker script, so that when multiple blobs are detected, the one closest to the previous location is considered as the copepod.
+If more than 2 blobs are detected, the movements are usually large. Presumably, this happens when something is detected which is not the copepod, and the tracker makes a large 'jump'. After noticing this pattern, I revised the tracker script, so that when multiple blobs are detected, the one closest to the previous location is considered as the copepod. This reduced, but did not eliminate, tracking mistakes.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-11-1.png)
 
-The number of blobs detected is not constant over a recording The transition from before to after the drop is associated with detecting extra blobs, suggesting the tracker is not accurate here.
+The number of blobs detected is not constant over a recording The transition from before to after the drop is associated with detecting extra blobs, suggesting the tracker is not accurate here. It will probably be necessary to eliminate the 1 second time frame straddling the drop point.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-12-1.png)
 
-Turning to blob size, this metric does not seem to be related to time. The gap after the drop at 60s shows how copepods tend not to move after this 'shock' and are thus not detected.
+Turning to blob size, this metric does not seem to be related to time. The gap after the drop at 60s shows how copepods tend to stop moving after this 'shock' and are thus not detected.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-13-1.png)
 
@@ -97,17 +97,17 @@ The correlation is clear, but there is a lot of variation (R<sup>2</sup> is ~0.5
     ## Multiple R-squared:  0.4968, Adjusted R-squared:  0.496 
     ## F-statistic: 604.2 on 1 and 612 DF,  p-value: < 2.2e-16
 
-In the scatterplot above, there are obviously some cases where the auto-tracker recorded much more movement than manual tracking. I checked whether certain wells seemed more prone to be outliers, e.g. if wells on the outer edge of the well-plates exhibited more reflections or other noise because they were not at the center of the video frame. It is not obvious that a single well position was commonly an outlier, but wells on the outer edge of the plate may be more prone to overestimating movement, presumably due to tracking mistakes.
+In the scatterplot above, there are obviously some cases where the auto-tracker recorded much more movement than manual tracking. I checked whether certain wells seemed more prone to be outliers, e.g. maybe wells on the outer edge of the well-plates exhibited more reflections or other noise because they were not at the center of the video frame. It is not obvious that a single well position was commonly an outlier (the position of each the 24 wells is indicated by a combo of a number (1 to 6) and a letter (A to D)). But wells on the outer edge of the plate may be more prone to overestimating movement, presumably due to tracking mistakes.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-19-1.png)
 
-I played with the parameters of the tracker to try and limit such tracking mistakes. However, when I increased the blob size that was considered detected (i.e. removing false positives), then I created some outliers in the other direction, where the auto tracker found far less movement than manual tracking. Thus, instead of decreasing tracker sensitivity to eliminate tracking mistakes, I decided to try and eliminate track mistakes after the fact.
+I played with the parameters of the tracker to try and limit such tracking mistakes. However, when I increased the blob size filter (i.e. removing small, possibly false positive blobs), then I created some outliers in the other direction, where the auto tracker found far less movement than manual tracking. Thus, instead of decreasing tracker sensitivity, I decided to try and eliminate tracking mistakes after the fact.
 
-Next, I remove suspicious data points and re-assess the correlation between automatic and manual tracking. I removed data points with large jumps, with large changes of direction, and with more than 2 blobs detected.
+Next, I removed suspicious data points and re-assessed the correlation between automatic and manual tracking. I removed data points with large jumps, with large changes of direction, and with more than 2 blobs detected.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-20-1.png)
 
-The slope of the correlation gets closer to 1, the intercept closer to zero, and R<sup>2</sup> increases to 0.76, all of which can be considered an improvement. This is not to say that all mistakes are eliminated, but enough are to make tedious manual tracking and fast automatic tracking comparable.
+The slope of the correlation gets closer to 1, the intercept closer to 0, and R<sup>2</sup> increases to 0.76, all of which can be considered an improvement. This is not to say that all mistakes are eliminated, but enough are to make tedious manual tracking and fast automatic tracking comparable.
 
     ## 
     ## Call:
@@ -128,13 +128,9 @@ The slope of the correlation gets closer to 1, the intercept closer to zero, and
     ## Multiple R-squared:  0.7597, Adjusted R-squared:  0.7594 
     ## F-statistic:  1935 on 1 and 612 DF,  p-value: < 2.2e-16
 
-It is also important to put tracking mistakes in the context of the aims of the experiment: to test for differences between treatments. Presumably, mistakes are randomized across treatments. Let's compare the treatment differences in the auto-tracking and manual-tracking datasets.
+It is also important to put tracking mistakes within the context of the aims of the experiment: to test for differences between treatments (uninfected vs infected copepods). Presumably, mistakes are randomized across treatments and thus not a source of bias. Let's compare the treatment differences in the auto-tracking and manual-tracking datasets.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-22-1.png)
-
-    ## <ScaleContinuousPosition>
-    ##  Range:  
-    ##  Limits:    0 --    1
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-23-1.png)
 
@@ -144,21 +140,21 @@ Up to this point, I have focused on the distance/speed of copepod movement, not 
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-24-1.png)
 
-Mostly, they are zero, which makes sense because in most frames copepods did not move. There is also a tendency for the data to skew positive, suggesting copepods tend to move in the same direction, as opposed to changing directions between frames.
+Mostly, they are zero, which makes sense because in most frames copepods did not move. There is also a tendency for the data to skew positive, suggesting copepods tend to continue moving in the same direction, as opposed to changing directions between frames.
 
-The largest dot products occur around the drop point and skew negative. This indicates large movements and a change of direction. I think this is due to tracking mistakes.
+The largest dot products occur around the drop point and skew negative, which indicates big jumps in the opposite direction to prior movement. While that is consistent with escape behavior, I think this is due to tracking mistakes.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-25-1.png)
 
-Zooming in, we can see the overall positive skew (more positive than negative dot products), but there is not an obvious change over time, such as fewer negative dot products after being scared.
+Zooming in, we can see the overall positive skew (more positive than negative dot products), but there is not an obvious change over time, such as more or less negative dot products after being scared.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-26-1.png)
 
-The dot product combines information about the magnitude and direction of movements, so it makes sense to check whether it is independent from the distance variable. The next scatterplot is distance versus dot product, after eliminating the largest distance measurements. Large movements can have zero dot products (i.e. a large jump after being stationary), positive dot products (i.e. a jump in the same direction as previous movement), or negative dot products (i.e. a change of direction).
+The dot product combines information about the magnitude and direction of movements, so it makes sense to check whether it is independent from the distance variable. The next scatterplot shows distance versus dot product, with the largest copepod movements eliminated. Large movements can have zero dot products (i.e. a large jump after being stationary), positive dot products (i.e. a jump in the same direction as previous movement), or negative dot products (i.e. a change of direction).
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-27-1.png)
 
-There appear to be negative dot products that follow a convex arc. This probably represents mistakes where the tracker jumps to something other than the copepod and then back. This seems especially suspicious when we look at the same graph is plotted for the manual tracking data; it is absent. The same positive skew can be observed though.
+There appear to be negative dot products that follow a convex arc. This probably represents mistakes where the tracker jumps to something other than the copepod and then right back. This seems especially suspicious when we look at the same graph for the manual tracking data; here it is absent. The same positive skew can be observed though.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-28-1.png)
 
@@ -178,27 +174,9 @@ However, when we just take a slice of the x-axis in the above scatter plot (betw
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-32-1.png)
 
-    ## <ggproto object: Class CoordCartesian, Coord>
-    ##     aspect: function
-    ##     distance: function
-    ##     expand: TRUE
-    ##     is_linear: function
-    ##     labels: function
-    ##     limits: list
-    ##     range: function
-    ##     render_axis_h: function
-    ##     render_axis_v: function
-    ##     render_bg: function
-    ##     render_fg: function
-    ##     train: function
-    ##     transform: function
-    ##     super:  <ggproto object: Class CoordCartesian, Coord>
+Thus, for this aspect of behavior, there is not an obvious difference between treatment groups. The pattern is essentially the same for the manual tracking data (not shown).
 
-Thus, there is not an obvious difference between treatment groups. The pattern is essentially the same for the manual tracking data (not shown).
-
-One final characteristic to compare between infected and uninfected copepods is the variation in copepod movements.
-
-When they move a given distance, are they slow and steady or quick and jerky? For each recording, I calculated the variability in distance moved per frame. The variation in movement scales well with the total distance moved. It does not look like, at a given level of activity, infected and uninfected copepods differ in this trait.
+One final characteristic to compare between infected and uninfected copepods is the variation in copepod movements. When moving a given distance, are movements slow and steady or quick and jerky? For each recording, I calculated the variation in distance moved per frame. The variation in movement scales well with the total distance moved in a recording, as we would expect. It does not look like, at a given level of activity, infected and uninfected copepods differ much.
 
 ![](testing_automatic_tracker_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-34-1.png)
 
