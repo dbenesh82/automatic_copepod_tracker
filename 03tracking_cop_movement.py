@@ -130,7 +130,8 @@ def find_copepod(binary_frame, xp, yp):
         x,y = round(x, 2), round(y,2)
         # if multiple blobs found, find blob closest to current position
         if len(keypoints) > 1 and xp is not None: 
-            dist_min = 120
+            dist_min = 150
+            i_min = 0
             for i in range(len(keypoints)):
                 (x,y), cop_qual = keypoints[i].pt, keypoints[i].size
                 dist = ( ((x - xp)**2 + (y - yp)**2) )**0.5
@@ -487,12 +488,12 @@ for d in dirs:
 
 
 # track a random sample to compare with manual tracker
-rvid = random.sample(range(len(vids_paths)), 100)
-for r in rvid:
-    vid = str(vids_paths[r])
-    track_whole_plate(vid)
+# rvid = random.sample(range(len(vids_paths)), 100)
+# for r in rvid:
+#    vid = str(vids_paths[r])
+#    track_whole_plate(vid)
 
 # loop through videos, track copepods in each
-#for vid in vids_paths:
- #  track_whole_plate(str(vid))
+for vid in vids_paths:
+    track_whole_plate(str(vid))
 
