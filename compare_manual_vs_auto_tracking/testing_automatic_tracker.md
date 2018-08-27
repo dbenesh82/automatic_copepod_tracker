@@ -44,15 +44,15 @@ Obviously, it would be nice to eliminate tracking mistakes. Two measures of dete
 
     ## 
     ##     0     1     2     3     4     5     6     7     8     9    10    11 
-    ## 0.597 0.389 0.009 0.001 0.001 0.000 0.000 0.000 0.000 0.000 0.000 0.000 
+    ## 0.632 0.359 0.006 0.001 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 
     ##    12    13    14    15    16    17    18    19    20    21    22    23 
     ## 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 
     ##    24    25    26    27    28    29    30    31    32    33    34    35 
     ## 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 
-    ##    36    37    38    39    40    42    44    45    47    48    49    50 
+    ##    36    37    38    39    40    42    43    44    45    47    48    49 
     ## 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 0.000 
-    ##    51    53    60    62    64 
-    ## 0.000 0.000 0.000 0.000 0.000
+    ##    50    51    53    60    62    64 
+    ## 0.000 0.000 0.000 0.000 0.000 0.000
 
 If more than 2 blobs are detected, the movements are usually large. Presumably, this happens when something is detected which is not the copepod, and the tracker makes a large 'jump'. After noticing this pattern, I revised the tracker script, so that when multiple blobs are detected, the one closest to the previous location is considered as the copepod. This helped in some cases, but it also led to the tracker sometimes getting 'stuck' in the wrong place, so in the end I did not retain this change to the tracker.
 
@@ -92,19 +92,19 @@ The correlation is clear, but there is a lot of variation (R<sup>2</sup> is ~0.5
     ## lm(formula = dist_a/8 ~ dist_m, data = bd_comb)
     ## 
     ## Residuals:
-    ##      Min       1Q   Median       3Q      Max 
-    ## -201.043  -39.530   -3.846   34.413  258.194 
+    ##     Min      1Q  Median      3Q     Max 
+    ## -188.68  -35.04   -9.79   24.44  467.76 
     ## 
     ## Coefficients:
     ##             Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept) 65.66733    2.12708   30.87   <2e-16 ***
-    ## dist_m       1.26432    0.03395   37.24   <2e-16 ***
+    ## (Intercept) 48.70623    1.13108   43.06   <2e-16 ***
+    ## dist_m       1.29643    0.01952   66.42   <2e-16 ***
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
-    ## Residual standard error: 57.34 on 1700 degrees of freedom
-    ## Multiple R-squared:  0.4493, Adjusted R-squared:  0.449 
-    ## F-statistic:  1387 on 1 and 1700 DF,  p-value: < 2.2e-16
+    ## Residual standard error: 51.51 on 4540 degrees of freedom
+    ## Multiple R-squared:  0.4928, Adjusted R-squared:  0.4927 
+    ## F-statistic:  4411 on 1 and 4540 DF,  p-value: < 2.2e-16
 
 In the scatterplot above, there are obviously some cases where the auto-tracker recorded much more movement than manual tracking. I checked whether certain wells seemed more prone to be outliers, e.g. maybe wells on the outer edge of the well-plates exhibited more reflections or other noise because they were not at the center of the video frame. It is not obvious that a single well position was commonly an outlier (the position of each the 24 wells is indicated by a combo of a number (1 to 6) and a letter (A to D)). But wells on the outer edge of the plate may be more prone to overestimating movement, presumably due to tracking mistakes.
 
@@ -122,7 +122,7 @@ I wrote a [script](fix_auto_track_mistakes.R) that attempts to correct these mis
 
 ![](testing_automatic_tracker_files/figure-markdown_github/unnamed-chunk-23-1.png)
 
-This correction led to a fair amount of movement being removed. It decreased total copepod movement in a recording by 38.3% on average.
+This correction led to a fair amount of movement being removed. It decreased total copepod movement in a recording by 35.9% on average.
 
 Now, let's again compare how auto- and manual-tracking data compare, this time using our corrected auto-tracking data.
 
@@ -134,19 +134,19 @@ Now, let's again compare how auto- and manual-tracking data compare, this time u
     ## 
     ## Residuals:
     ##      Min       1Q   Median       3Q      Max 
-    ## -161.530  -14.782   -1.298   16.208  141.549 
+    ## -151.971  -12.395   -3.382    9.646  246.849 
     ## 
     ## Coefficients:
-    ##             Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept) 14.56265    1.00959   14.42   <2e-16 ***
-    ## dist_m       1.29704    0.01611   80.49   <2e-16 ***
+    ##              Estimate Std. Error t value Pr(>|t|)    
+    ## (Intercept) 12.239734   0.502691   24.35   <2e-16 ***
+    ## dist_m       1.246542   0.008675  143.69   <2e-16 ***
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
-    ## Residual standard error: 27.22 on 1700 degrees of freedom
-    ##   (4160 observations deleted due to missingness)
-    ## Multiple R-squared:  0.7922, Adjusted R-squared:  0.792 
-    ## F-statistic:  6479 on 1 and 1700 DF,  p-value: < 2.2e-16
+    ## Residual standard error: 22.89 on 4540 degrees of freedom
+    ##   (3780 observations deleted due to missingness)
+    ## Multiple R-squared:  0.8197, Adjusted R-squared:  0.8197 
+    ## F-statistic: 2.065e+04 on 1 and 4540 DF,  p-value: < 2.2e-16
 
 Now, the correlation appears tighter. The slope of the correlation gets closer to 1, the intercept closer to 0, and R<sup>2</sup> increases to 0.8, all of which can be considered an improvement. This is not to say that all mistakes are eliminated, but enough are to make tedious manual tracking and fast automatic tracking quite comparable.
 

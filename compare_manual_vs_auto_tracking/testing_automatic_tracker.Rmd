@@ -18,7 +18,7 @@ I wrote a [script](../03tracking_cop_movement.py) to automatically track copepod
 # import automatic data
 dfiles <- list.files(path = "../track_data/")
 #dfiles <- sample(dfiles, size = 1000)
-dfiles <- dfiles[1:3000]
+#dfiles <- dfiles[1:3000]
 if(exists('bda')) {rm(bda)}
 for(d in dfiles){
   fil <- paste0("../../04_5automatic_tracking/track_data/", d)
